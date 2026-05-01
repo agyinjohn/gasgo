@@ -1,0 +1,510 @@
+================================================================================
+GASGO — GAS DELIVERY PLATFORM
+SYSTEM DESIGN REQUIREMENTS
+Version 1.0 · Confidential
+On-demand LPG cylinder delivery & exchange web application
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. PRODUCT OVERVIEW
+--------------------------------------------------------------------------------
+
+GasGo is an on-demand LPG (liquefied petroleum gas) delivery and exchange web
+application. Users request a gas cylinder fill or exchange from their location;
+the platform matches them with the nearest available station, assigns a rider,
+and provides real-time delivery tracking. Station owners set their own prices
+per cylinder size. The platform earns a commission on each completed order.
+
+CORE VALUE PROPOSITIONS
+
+  - Convenience          Users never leave home — gas is brought to their door
+                         within a targeted SLA.
+
+  - Price transparency   Station prices are shown upfront; users can compare
+                         before ordering.
+
+  - Gas exchange         Old cylinders are exchanged for new filled ones at a
+                         lower price, eliminating the need to source a
+                         replacement.
+
+  - Real-time tracking   Live rider location and status updates at every stage
+                         of the order.
+
+  - Station empowerment  Stations control inventory, pricing, and see analytics
+                         without manual reconciliation.
+
+
+--------------------------------------------------------------------------------
+2. SYSTEM ACTORS
+--------------------------------------------------------------------------------
+
+  Actor     Interface                Primary responsibility
+  --------- ------------------------ -------------------------------------------------
+  User      Mobile-first web app     Browse stations, place orders, track delivery,
+                                     rate rider
+  Rider     Mobile web / PWA         Accept orders, collect & deliver cylinders,
+                                     confirm via OTP
+  Station   Web dashboard            Set prices, manage inventory, view order queue,
+                                     analytics
+  Admin     Web dashboard            Approve stations/riders, platform pricing,
+                                     global metrics
+
+
+--------------------------------------------------------------------------------
+3. PLATFORM ARCHITECTURE
+--------------------------------------------------------------------------------
+
+Four actor layers connect to a shared set of core backend services.
+
+ACTOR LAYERS (top to bottom)
+
+  User layer
+    Open app (GPS detect) → View stations (by distance) → Select cylinder
+    (size + price) → Checkout & pay
+
+  Rider layer
+    Go online (GPS active) → Accept order (60s window) → Pick up from station
+    → Deliver (OTP confirm)
+
+  Station layer
+    Price manager (per size) | Inventory (stock count) | Order queue (incoming)
+    | Analytics (revenue)
+
+  Admin layer
+    Station management (approve) | Rider management (KYC) | Pricing controls
+    (surge/caps) | Platform metrics
+
+CORE BACKEND SERVICES
+
+  - Geo / Proximity service
+  - Realtime WebSocket engine
+  - Payment service
+  - Push / SMS / Email notification service
+
+
+--------------------------------------------------------------------------------
+4. USER APP — FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+4.1 ONBOARDING & AUTHENTICATION
+
+  - Register with phone number + OTP verification.
+  - Profile stores: name, saved delivery addresses, payment methods, cylinder
+    order history.
+  - Location permission requested on first launch; fallback to manual address
+    entry.
+  - Social login (Google) as optional fast path in v2.
+
+4.2 STATION DISCOVERY
+
+  - On app open, GPS coordinates are detected and sent to the Geo service.
+  - Stations are returned sorted by straight-line distance (closest first).
+  - Results filtered to active stations with stock in at least one cylinder size.
+  - Each station card shows: name, distance, rating, available sizes, and
+    starting price.
+  - Users can manually browse other stations outside the default radius.
+
+4.3 CYLINDER SELECTION
+
+  - Standard sizes: 3 kg (small home), 6 kg (standard home), 12 kg
+    (large/commercial).
+  - Each size is shown as a selectable card with the station's current price.
+  - Tapping a size opens a detail sheet: brand, fill type, weight, and
+    availability.
+  - Users can enquire about stock before placing an order (no commitment).
+
+4.4 ORDER TYPES
+
+  - Fill order     — user already has the cylinder; rider collects, fills at
+                     station, returns.
+  - Delivery order — station sends a new pre-filled cylinder directly to user.
+  - Exchange order — rider swaps the user's old cylinder for a new filled one.
+  - Order type is selected at checkout. Price displayed updates per selection.
+
+4.5 GAS EXCHANGE FLOW
+
+  - User selects "Exchange" and declares the size of their old cylinder.
+  - Exchange price (set by the station, always <= fill price) shown upfront.
+  - Rider picks up old cylinder from user's doorstep, delivers it to station.
+  - Rider collects new pre-filled cylinder and returns to the user.
+  - Station logs the returned cylinder into the "needs refill" queue.
+
+4.6 CHECKOUT & PAYMENT
+
+  - User confirms: delivery address, order type, cylinder selection.
+  - Total = cylinder price + platform delivery fee.
+  - Payment methods: mobile money (MTN / Vodafone Cash), debit/credit card,
+    cash on delivery.
+  - On payment confirmation, order is created with status = Pending.
+  - Payment held in escrow; released to station on delivery confirmation.
+
+4.7 LIVE TRACKING
+
+  - Once a rider accepts, user sees a live map with rider GPS position.
+  - Order status label updates in real time:
+      Accepted → At station → En route → Delivered
+  - ETA countdown displayed and recalculated every 30 seconds.
+  - Push notifications sent at every status transition.
+
+4.8 RATING & FEEDBACK
+
+  - After delivery, user is prompted to rate the rider (1–5 stars).
+  - Optional text comment for detailed feedback.
+  - Ratings feed into the rider's rolling average, visible on their profile.
+
+
+--------------------------------------------------------------------------------
+5. RIDER APP — FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+5.1 ONBOARDING & KYC
+
+  - Rider registers with: name, phone, national ID, vehicle type
+    (motorbike / tricycle / van).
+  - Admin reviews and approves the KYC submission before the rider can go
+    online.
+  - Background check confirmation stored against rider profile.
+
+5.2 ONLINE / OFFLINE TOGGLE
+
+  - Rider switches status to Available; platform begins tracking GPS every
+    10–15 seconds.
+  - Going offline removes rider from the dispatch pool immediately.
+  - Riders can set a break duration to pause without fully going offline.
+
+5.3 ORDER ASSIGNMENT
+
+  - When an order is placed, the system finds the nearest available rider
+    within a configurable radius (default 5 km).
+  - Rider receives a push notification with order summary and has 60 seconds
+    to accept.
+  - If declined or timed out, the next closest rider is tried. After 3
+    failures, admin is alerted.
+
+5.4 STANDARD DELIVERY WORKFLOW
+
+  - Step 1: Navigate to the station address (in-app map with navigation).
+  - Step 2: Confirm cylinder pick-up at station (station marks "ready for
+    pickup").
+  - Step 3: Navigate to user's delivery address.
+  - Step 4: User enters 4-digit OTP on rider's screen to confirm receipt.
+  - Step 5: Rider optionally uploads a delivery photo.
+
+5.5 EXCHANGE WORKFLOW
+
+  - Step 1: Navigate to user address — collect old cylinder.
+  - Step 2: Navigate to station — drop off old cylinder, collect new filled one.
+  - Step 3: Return to user address — deliver new cylinder.
+  - Step 4: OTP confirmation at each handoff point.
+  - The rider app shows a clear multi-step progress indicator for exchange
+    orders.
+
+5.6 RIDER DASHBOARD
+
+  - Today's earnings (real-time), total trips completed, average rating.
+  - Active order map view with navigation shortcut.
+  - Full delivery history with order details and earnings breakdown.
+  - Payout history and bank/mobile money details management.
+
+
+--------------------------------------------------------------------------------
+6. STATION DASHBOARD — FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+6.1 PRICE MANAGER
+
+  - Station sets a fill price and an exchange price per cylinder size
+    (3 kg, 6 kg, 12 kg).
+  - Constraint enforced: exchange_price <= fill_price for the same size.
+  - Prices update in real time — next user session sees the new price.
+  - Full price change history is logged for dispute resolution.
+
+6.2 INVENTORY MANAGER
+
+  - Station logs stock count per cylinder size.
+  - When a filled cylinder is dispatched, stock decrements automatically.
+  - Returned exchange cylinders enter a "needs refill" queue, tracked
+    separately.
+  - Configurable low-stock alert threshold per size; notification sent when
+    breached.
+  - Station can pause orders for a size when stock is 0.
+
+6.3 ORDER QUEUE
+
+  - Three-column kanban view: Incoming → Active → Completed.
+  - Each order card: cylinder size, order type, rider name, customer address,
+    timestamp.
+  - Station marks an order "ready for pickup" once the cylinder is prepared.
+  - Sound/visual alert on new incoming orders.
+  - Completed column shows today's orders; historical view with date filters.
+
+6.4 EXCHANGE HANDLING
+
+  - Dedicated view for cylinders currently at the station awaiting refill.
+  - Each returned cylinder tracked with: original order ID, size, return
+    timestamp.
+  - Station marks cylinders as "refilled" to move them back to available stock.
+
+6.5 ANALYTICS
+
+  - Daily and weekly charts for: orders fulfilled, revenue, exchange vs. fill
+    split.
+  - Most popular cylinder size by order count and revenue.
+  - Average delivery time (order placed → delivered).
+  - Platform commission deducted shown clearly in earnings summary.
+
+6.6 PROFILE & SETTINGS
+
+  - Station name, address, geolocation (set on registration, editable by
+    admin).
+  - Operating hours per day of week; orders outside hours are blocked.
+  - Bank / mobile money account for payouts.
+  - Notification preferences: push, email, or both.
+
+
+--------------------------------------------------------------------------------
+7. ADMIN DASHBOARD — FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+STATION MANAGEMENT
+
+  - Review and approve new station registration applications.
+  - Suspend or permanently ban non-compliant stations.
+  - Set platform commission percentage per station (default or custom rate).
+  - Override station geolocation if incorrect.
+
+RIDER MANAGEMENT
+
+  - Review KYC documents and approve or reject rider applications.
+  - View rider performance: trips, ratings, complaints, earnings.
+  - Suspend or ban riders with policy violations.
+  - Assign riders to specific zones or station clusters.
+
+PRICING CONTROLS
+
+  - Set platform-wide delivery fee structure (flat or distance-based).
+  - Enable surge pricing multipliers during peak demand periods.
+  - Set minimum and maximum price caps per cylinder size to protect users.
+  - Emergency price freeze during supply shocks.
+
+PLATFORM METRICS
+
+  - Total orders, GMV (gross merchandise value), average order value.
+  - Active stations, active riders, new user signups.
+  - Retention rate, complaint resolution rate, SLA breach percentage.
+  - Heatmap of order density by geography and time.
+
+DISPUTE & SUPPORT
+
+  - View flagged orders and customer complaints.
+  - Manually trigger refunds or order cancellations.
+  - Communicate with stations and riders via in-app messaging.
+
+
+--------------------------------------------------------------------------------
+8. ORDER LIFECYCLE
+--------------------------------------------------------------------------------
+
+Every order moves through a defined state machine. Status transitions trigger
+notifications to all relevant actors and update the realtime tracking view.
+
+ORDER STATUS FLOW
+
+  Pending → Accepted → At station → En route → Delivered
+                                                         ↘ Cancelled (any stage)
+
+  Any stage can transition to Cancelled. Cancelled triggers refund flow.
+
+STATUS TRANSITION TABLE
+
+  Status       Triggered by                          Notifies
+  ------------ ------------------------------------- ----------------------------
+  Pending      User completes payment                Station, nearest riders
+  Accepted     Rider accepts dispatch                User, Station
+  At station   Rider arrives at station              User, Station
+  En route     Rider departs station with cylinder   User
+  Delivered    User enters OTP                       User, Station, Admin
+  Cancelled    User / Station / Admin action         All parties + refund trigger
+
+
+--------------------------------------------------------------------------------
+9. CORE DATA MODELS
+--------------------------------------------------------------------------------
+
+Three primary entities. Foreign key relationships exist between all three.
+
+ORDER
+
+  Field               Type        Notes
+  ------------------- ----------- ----------------------------------------------
+  order_id            ObjectId    Primary key
+  user_id             ObjectId    Ref: User
+  station_id          ObjectId    Ref: Station
+  rider_id            ObjectId    Ref: Rider (nullable until assigned)
+  cylinder_size       ENUM        3kg | 6kg | 12kg | 25kg
+  order_type          ENUM        fill | delivery | exchange
+  status              ENUM        pending | accepted | at_station | en_route |
+                                  delivered | cancelled
+  price_at_order      DECIMAL     Snapshot at time of order — not live price
+  delivery_address    String      Full text address
+  otp_code            String      4-digit code, select: false (hidden from API)
+  payment_status      ENUM        pending | paid | refunded | failed
+  payment_reference   String      Paystack reference
+
+STATION
+
+  Field               Type          Notes
+  ------------------- ------------- --------------------------------------------
+  station_id          ObjectId      Primary key
+  owner               ObjectId      Ref: User
+  name                String
+  address             String
+  location            GeoJSON Point [lng, lat] — 2dsphere indexed
+  geohash             String(10)    Geohash level 7 (~150m precision)
+  operating_hours     JSONB         {mon: {open:"08:00", close:"18:00"}, ...}
+  is_active           Boolean       Station toggled online/offline by owner
+  is_approved         Boolean       Set by admin after vetting
+  commission_pct      Number        Platform commission %, default 10
+  rating              Object        {avg: Number, count: Number}
+
+CYLINDER LISTING
+
+  Field               Type        Notes
+  ------------------- ----------- ----------------------------------------------
+  listing_id          ObjectId    Primary key
+  station_id          ObjectId    Ref: Station
+  size                ENUM        3kg | 6kg | 12kg | 25kg
+  brand               String
+  fill_price          DECIMAL     Price for fresh fill delivery
+  exchange_price      DECIMAL     Must be <= fill_price (enforced app-layer)
+  stock_count         INT         Decrements on dispatch, increments on restock
+  needs_refill_count  INT         Returned empties awaiting refill
+  is_available        Boolean     Computed: stock_count > 0
+  low_stock_threshold INT         Alert fires when stock_count <= this value
+
+
+--------------------------------------------------------------------------------
+10. CORE BACKEND SERVICES
+--------------------------------------------------------------------------------
+
+GEO SERVICE
+
+  - Accepts user GPS coordinates; returns stations within radius sorted by
+    Haversine distance.
+  - Stations indexed by geohash (level 7 = ~150 m precision) for fast
+    bounding-box queries.
+  - Radius configurable per city; default 10 km with a 25 km hard ceiling.
+
+REALTIME ENGINE
+
+  - WebSocket server (or Server-Sent Events fallback) for live rider location
+    push.
+  - Rider GPS reported every 10–15 seconds while an order is active.
+  - Order status changes broadcast instantly to all subscribed clients.
+  - Rooms scoped per order_id — no cross-order data leakage.
+
+PAYMENT SERVICE
+
+  - Integrates with Paystack or Hubtel for Ghana mobile money and card
+    processing.
+  - Payment held in escrow on order creation.
+  - Released to station account (minus commission) on status = Delivered.
+  - Refund triggered automatically on status = Cancelled, settled within 24 h.
+
+DISPATCH ENGINE
+
+  - On order creation, queries riders within radius ordered by distance.
+  - Sends push to nearest rider; starts a 60-second countdown.
+  - On timeout or decline, tries the next rider; logs each attempt.
+  - After 3 failed assignments, escalates to admin alert queue.
+
+NOTIFICATION SERVICE
+
+  - Sends push notifications (Firebase Cloud Messaging) for status transitions.
+  - SMS fallback (Arkesel or Twilio) for users without push enabled.
+  - Email for receipts, KYC outcomes, and payout confirmations.
+  - All notification templates managed centrally for easy copy updates.
+
+OTP SERVICE
+
+  - Generates a cryptographically random 4-digit code per order on dispatch.
+  - Code expires after 30 minutes or once used, whichever comes first.
+  - Maximum 3 attempts before order is flagged for manual review.
+
+
+--------------------------------------------------------------------------------
+11. NON-FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+
+  Requirement                           Target
+  ------------------------------------- ----------------------------------------
+  API response time (p95)               < 400 ms
+  Realtime location update latency      < 2 seconds end-to-end
+  Uptime SLA                            99.5% monthly
+  Payment processing timeout            < 8 seconds
+  Order assignment time (rider found)   < 90 seconds
+  Mobile app first load (3G)            < 4 seconds
+  Data retention — order records        5 years (regulatory)
+  GDPR / data privacy                   User data deletable on request within
+                                        30 days
+
+
+--------------------------------------------------------------------------------
+12. KEY DESIGN DECISIONS
+--------------------------------------------------------------------------------
+
+STATION-SET PRICING
+  Prices differ between stations and are set by the station owner. The platform
+  does not mandate a price floor (except via admin caps). This creates natural
+  market competition between stations.
+
+EXCHANGE PRICE CONSTRAINT
+  The platform enforces at the application layer that a station's exchange price
+  must always be <= its fill price for the same cylinder size. This protects
+  users from being charged more for an exchange than a fresh purchase.
+
+CLOSEST STATION DEFAULT
+  Station proximity is calculated from the user's live GPS on each session open,
+  not from a saved address. Users can override to browse other stations.
+
+ESCROW PAYMENT MODEL
+  Payment is captured on order creation and held in escrow. It is released to
+  the station only after OTP-confirmed delivery. This protects users from
+  non-delivery while ensuring stations are paid promptly.
+
+V1 SCOPE — DELIVERY ONLY
+  The "fill order" (collect from user, fill, return) is complex logistics. v1
+  ships with delivery and exchange only. Fill-and-return is scoped for v2 after
+  operational learnings.
+
+GEOHASH INDEXING
+  Stations are indexed by geohash at level 7 (~150 m cells). Proximity queries
+  expand to neighbouring cells to avoid boundary edge cases, then sort results
+  by true Haversine distance.
+
+
+--------------------------------------------------------------------------------
+13. PHASED DELIVERY ROADMAP
+--------------------------------------------------------------------------------
+
+  Phase                   Scope                                        Target
+  ----------------------- -------------------------------------------- ----------
+  Phase 1 — MVP           User app (delivery + exchange orders),       10–14 weeks
+                          Station dashboard (price + inventory +
+                          order queue), Rider app (basic flow + OTP),
+                          Geo service + payment integration
+
+  Phase 2 — Operations    Admin dashboard, analytics, surge pricing,   6–8 weeks
+                          fill-and-return order type, rider KYC
+                          workflow, payout automation
+
+  Phase 3 — Growth        Referral programme, scheduled deliveries,    8–10 weeks
+                          loyalty points, multi-city geo expansion,
+                          station rating and review system
+
+
+================================================================================
+END OF DOCUMENT
+GasGo Gas Delivery Platform · System Design Requirements · Version 1.0
+================================================================================

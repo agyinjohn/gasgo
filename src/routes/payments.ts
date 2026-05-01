@@ -1,0 +1,58 @@
+import { Router, Request, Response } from 'express';
+import express from 'express';
+import crypto from 'crypto';
+import { Order } from '../models/Order';
+import { verifyPayment, initiateRefund } from '../services/paymentService';
+
+const router = Router();
+
+/** POST /api/v1/payments/webhook — Paystack webhook
+ *  NOTE: must be registered BEFORE express.json() in index.ts
+ *  so req.body is the raw buffer for signature verification.
+ */
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+  const rawBody = req.body instanceof Buffer ? req.body : Buffer.from(JSON.stringify(req.body));
+
+  const hash = crypto
+    .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY!)
+    .update(rawBody)
+    .digest('hex');
+
+  if (hash !== req.headers['x-paystack-signature']) {
+    return res.status(400).json({ success: false, message: 'Invalid signature' });
+  }
+
+  const payload = JSON.parse(rawBody.toString());
+  const { event, data } = payload;
+
+  if (event === 'charge.success') {
+    const order = await Order.findOne({ paystackReference: data.reference });
+    if (order && order.paymentStatus === 'pending') {
+      order.paymentStatus = 'captured';
+      await order.save();
+    }
+  }
+
+  if (event === 'transfer.success') {
+    // Mark station payout as settled using transfer reference stored in order
+    await Order.findOneAndUpdate(
+      { paystackReference: data.reference, paymentStatus: 'released' },
+      { paymentStatus: 'released' } // already released; log if needed
+    );
+  }
+
+  if (event === 'transfer.failed' || event === 'transfer.reversed') {
+    console.error(`[Webhook] Payout ${event} for reference ${data.reference}`);
+    // TODO: alert admin and retry payout
+  }
+
+  res.json({ status: 'ok' });
+});
+
+/** GET /api/v1/payments/verify/:reference */
+router.get('/verify/:reference', async (req: Request, res: Response) => {
+  const result = await verifyPayment(req.params.reference);
+  res.json({ success: true, payment: result });
+});
+
+export default router;
