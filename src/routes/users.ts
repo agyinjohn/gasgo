@@ -150,7 +150,7 @@ router.patch(
     const user = await User.findById(req.user!.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const address = user.savedAddresses.id(req.params.addressId);
+    const address = (user.savedAddresses as any).id(req.params.addressId);
     if (!address) return res.status(404).json({ success: false, message: 'Address not found' });
 
     const { label, street, city, lat, lng, isDefault } = req.body;
@@ -176,7 +176,7 @@ router.delete(
     const user = await User.findById(req.user!.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const address = user.savedAddresses.id(req.params.addressId);
+    const address = (user.savedAddresses as any).id(req.params.addressId);
     if (!address) return res.status(404).json({ success: false, message: 'Address not found' });
 
     address.deleteOne();
@@ -266,7 +266,7 @@ router.patch(
     const user = await User.findById(req.user!.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const method = user.paymentMethods.id(req.params.methodId);
+    const method = (user.paymentMethods as any).id(req.params.methodId);
     if (!method) return res.status(404).json({ success: false, message: 'Payment method not found' });
 
     if (req.body.isDefault) {
@@ -288,7 +288,7 @@ router.delete(
     const user = await User.findById(req.user!.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const method = user.paymentMethods.id(req.params.methodId);
+    const method = (user.paymentMethods as any).id(req.params.methodId);
     if (!method) return res.status(404).json({ success: false, message: 'Payment method not found' });
 
     method.deleteOne();
@@ -379,7 +379,7 @@ router.get('/loyalty', async (req: AuthRequest, res: Response) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('orderId', 'cylinderSize orderType createdAt'),
+      .populate('orderId', 'cylinders orderType createdAt'),
     LoyaltyTransaction.countDocuments({ userId: req.user!.id }),
   ]);
 

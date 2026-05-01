@@ -113,6 +113,10 @@ CORE BACKEND SERVICES
   - Tapping a size opens a detail sheet: brand, fill type, weight, and
     availability.
   - Users can enquire about stock before placing an order (no commitment).
+  - Users can select MULTIPLE cylinders of the same or different sizes in a
+    single order (e.g. one 3kg + two 6kg).
+  - Each line item has a quantity (min 1, max limited by station stock).
+  - Cylinder subtotal = sum of (price × quantity) per line item.
 
 4.4 ORDER TYPES
 
@@ -133,7 +137,11 @@ CORE BACKEND SERVICES
 4.6 CHECKOUT & PAYMENT
 
   - User confirms: delivery address, order type, cylinder selection.
-  - Total = cylinder price + platform delivery fee.
+  - Total = cylinder subtotal + platform delivery fee.
+  - Delivery fee scales with total cylinder count:
+      1 cylinder  = base fee (GHS 5)
+      2 cylinders = base fee × 1.5
+      3+ cylinders = base fee × 2.0
   - Payment methods: mobile money (MTN / Vodafone Cash), debit/credit card,
     cash on delivery.
   - On payment confirmation, order is created with status = Pending.

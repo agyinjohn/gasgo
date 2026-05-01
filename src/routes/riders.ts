@@ -173,7 +173,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
     ]),
     Order.findOne(
       { riderId, status: { $in: ['accepted', 'at_station', 'en_route'] } },
-      '_id status cylinderSize orderType deliveryAddress stationId'
+      '_id status cylinders orderType deliveryAddress stationId'
     ).populate('stationId', 'name address lat lng'),
   ]);
 
@@ -251,7 +251,7 @@ router.get('/payouts', async (req: AuthRequest, res: Response) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('orderId', 'cylinderSize orderType createdAt'),
+      .populate('orderId', 'cylinders orderType createdAt'),
     Payout.countDocuments({ recipientType: 'rider', recipientId: req.user!.id }),
   ]);
 

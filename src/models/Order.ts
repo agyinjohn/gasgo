@@ -14,24 +14,31 @@ export interface IStatusEvent {
   note?: string;
 }
 
+export interface ICylinderLineItem {
+  size: 3 | 6 | 12;
+  quantity: number;
+  unitPrice: number;    // price per cylinder at time of order
+  subtotal: number;     // unitPrice * quantity
+}
+
 export interface IOrder extends Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   stationId: mongoose.Types.ObjectId;
   riderId?: mongoose.Types.ObjectId;
 
-  // Cylinder details
-  cylinderSize: 3 | 6 | 12;
+  // Cylinder line items (multi-cylinder support)
+  cylinders: ICylinderLineItem[];
   orderType: 'fill' | 'delivery' | 'exchange';
 
   // Pricing snapshot (immutable after creation)
-  cylinderPrice: number;          // station price at time of order
-  deliveryFee: number;            // platform delivery fee
-  totalAmount: number;            // cylinderPrice + deliveryFee
-  commissionPct: number;          // platform commission % at time of order
-  commissionAmount: number;       // computed: totalAmount * commissionPct / 100
-  stationPayout: number;          // totalAmount - commissionAmount
-  surgeMultiplier: number;        // surge applied at time of order
+  cylinderSubtotal: number;       // sum of all line item subtotals
+  deliveryFee: number;            // scaled by total cylinder count
+  totalAmount: number;            // cylinderSubtotal + deliveryFee
+  commissionPct: number;
+  commissionAmount: number;
+  stationPayout: number;
+  surgeMultiplier: number;
 
   // Loyalty
   loyaltyPointsEarned: number;
@@ -111,26 +118,29 @@ const DispatchAttemptSchema = new Schema<IDispatchAttempt>({
   outcome: { type: String, enum: ['accepted', 'declined', 'timeout'] },
 }, { _id: false });
 
+const CylinderLineItemSchema = new Schema<ICylinderLineItem>({
+  size:      { type: Number, enum: [3, 6, 12], required: true },
+  quantity:  { type: Number, required: true, min: 1 },
+  unitPrice: { type: Number, required: true, min: 0 },
+  subtotal:  { type: Number, required: true, min: 0 },
+}, { _id: false });
+
 const OrderSchema = new Schema<IOrder>(
   {
-    userId: { type: Schema.Types.ObjectId, required: true, ref: 'User', index: true },
+    userId:    { type: Schema.Types.ObjectId, required: true, ref: 'User',    index: true },
     stationId: { type: Schema.Types.ObjectId, required: true, ref: 'Station', index: true },
-    riderId: { type: Schema.Types.ObjectId, ref: 'Rider', index: true },
+    riderId:   { type: Schema.Types.ObjectId, ref: 'Rider', index: true },
 
-    cylinderSize: { type: Number, enum: [3, 6, 12], required: true },
-    orderType: {
-      type: String,
-      enum: ['fill', 'delivery', 'exchange'],
-      required: true,
-    },
+    cylinders: { type: [CylinderLineItemSchema], required: true },
+    orderType: { type: String, enum: ['fill', 'delivery', 'exchange'], required: true },
 
-    cylinderPrice: { type: Number, required: true, min: 0 },
-    deliveryFee: { type: Number, required: true, min: 0 },
-    totalAmount: { type: Number, required: true, min: 0 },
-    commissionPct: { type: Number, required: true },
-    commissionAmount: { type: Number, required: true },
-    stationPayout: { type: Number, required: true },
-    surgeMultiplier: { type: Number, default: 1 },  // snapshot at time of order
+    cylinderSubtotal:  { type: Number, required: true, min: 0 },
+    deliveryFee:       { type: Number, required: true, min: 0 },
+    totalAmount:       { type: Number, required: true, min: 0 },
+    commissionPct:     { type: Number, required: true },
+    commissionAmount:  { type: Number, required: true },
+    stationPayout:     { type: Number, required: true },
+    surgeMultiplier:   { type: Number, default: 1 },
     loyaltyPointsEarned:   { type: Number, default: 0 },
     loyaltyPointsRedeemed: { type: Number, default: 0 },
     loyaltyDiscount:       { type: Number, default: 0 },

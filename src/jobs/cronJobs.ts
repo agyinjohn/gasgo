@@ -29,17 +29,17 @@ export function startOrderCleanupJob(): void {
         });
         await order.save();
 
-        // Restore station stock — respect isPaused state
-        const stationDoc = await Station.findOne(
-          { _id: order.stationId, 'cylinderListings.size': order.cylinderSize }
-        );
+        // Restore station stock for each line item
+        const stationDoc = await Station.findById(order.stationId);
         if (stationDoc) {
-          const listing = stationDoc.cylinderListings.find((l) => l.size === order.cylinderSize);
-          if (listing) {
-            listing.stockCount += 1;
-            listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
-            await stationDoc.save();
+          for (const item of order.cylinders) {
+            const listing = stationDoc.cylinderListings.find((l) => l.size === item.size);
+            if (listing) {
+              listing.stockCount += item.quantity;
+              listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
+            }
           }
+          await stationDoc.save();
         }
 
         // Trigger refund for captured payments
@@ -130,9 +130,10 @@ export function startScheduledDispatchJob(): void {
         const { User } = await import('../models/User');
         const user = await User.findById(order.userId).select('fcmToken phone');
         if (user?.fcmToken) {
+          const sizes = order.cylinders.map((c: any) => `${c.quantity}x${c.size}kg`).join(', ');
           await sendPushNotification(user.fcmToken, {
             title: '🔥 Your scheduled order is on its way!',
-            body: `We\'re finding a rider for your ${order.cylinderSize}kg cylinder delivery.`,
+            body: `We're finding a rider for your ${sizes} delivery.`,
             data: { orderId: order._id.toString(), screen: 'OrderTracking' },
           });
         }

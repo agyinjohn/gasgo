@@ -72,7 +72,9 @@ router.post(
   '/',
   [
     body('stationId').isMongoId(),
-    body('cylinderSize').isIn([3, 6, 12]),
+    body('cylinders').isArray({ min: 1 }).withMessage('At least one cylinder required'),
+    body('cylinders.*.size').isIn([3, 6, 12]),
+    body('cylinders.*.quantity').isInt({ min: 1, max: 20 }),
     body('orderType').isIn(['delivery', 'exchange']),
     body('deliveryAddress.street').trim().notEmpty(),
     body('deliveryAddress.city').trim().notEmpty(),
@@ -85,7 +87,7 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     if (ve(req, res)) return;
 
-    const { stationId, cylinderSize, orderType, deliveryAddress, paymentMethod, paymentProvider, redeemPoints, scheduledFor } = req.body;
+    const { stationId, cylinders, orderType, deliveryAddress, paymentMethod, paymentProvider, redeemPoints, scheduledFor } = req.body;
     const userId = req.user!.id;
 
     // Validate scheduledFor is in the future (min 30 min from now)
@@ -110,47 +112,71 @@ router.post(
       return res.status(400).json({ success: false, message: 'Station is closed today' });
     }
 
-    const listing = station.cylinderListings.find(
-      (l) => l.size === cylinderSize && l.isAvailable && l.stockCount > 0
-    );
-    if (!listing) {
-      return res.status(400).json({ success: false, message: 'Selected cylinder size is not available at this station' });
+    // ── Validate each cylinder line item against station stock ──────────────────
+    // Deduplicate sizes (merge quantities if same size appears twice)
+    const sizeMap = new Map<number, number>();
+    for (const item of cylinders as { size: number; quantity: number }[]) {
+      sizeMap.set(item.size, (sizeMap.get(item.size) ?? 0) + item.quantity);
+    }
+
+    for (const [size, quantity] of sizeMap) {
+      const listing = station.cylinderListings.find((l) => l.size === size);
+      if (!listing || !listing.isAvailable || listing.stockCount < quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for ${size}kg cylinder (requested ${quantity}, available ${listing?.stockCount ?? 0})`,
+        });
+      }
     }
 
     // ── Pricing: fetch config, apply surge + caps ──────────────────────────
     const pricingConfig = await PricingConfig.findOne().sort({ createdAt: -1 });
 
-    // Price freeze — block new orders if active
     if (pricingConfig?.priceFreezeActive) {
       return res.status(503).json({ success: false, message: 'Orders are temporarily paused due to a price freeze. Please try again shortly.' });
     }
 
-    let cylinderPrice = orderType === 'exchange' ? listing.exchangePrice : listing.fillPrice;
-
-    // Apply surge multiplier
     const surgeMultiplier = pricingConfig?.surgeActive ? (pricingConfig.surgeMultiplier ?? 1) : 1;
-    cylinderPrice = +(cylinderPrice * surgeMultiplier).toFixed(2);
+    const surgeApplied = surgeMultiplier > 1;
+    const surgeReason  = surgeApplied ? (pricingConfig?.surgeReason ?? 'High demand') : undefined;
 
-    // Enforce min price cap
-    if (pricingConfig?.minPriceCaps?.length) {
-      const cap = pricingConfig.minPriceCaps.find((c) => c.size === cylinderSize);
-      if (cap && cylinderPrice < cap.min) cylinderPrice = cap.min;
+    // Build cylinder line items with pricing
+    const cylinderLineItems = [];
+    let cylinderSubtotal = 0;
+
+    for (const [size, quantity] of sizeMap) {
+      const listing = station.cylinderListings.find((l) => l.size === size)!;
+      let unitPrice = orderType === 'exchange' ? listing.exchangePrice : listing.fillPrice;
+
+      // Apply surge
+      unitPrice = +(unitPrice * surgeMultiplier).toFixed(2);
+
+      // Enforce min cap
+      if (pricingConfig?.minPriceCaps?.length) {
+        const cap = pricingConfig.minPriceCaps.find((c) => c.size === size);
+        if (cap && unitPrice < cap.min) unitPrice = cap.min;
+      }
+      // Enforce max cap
+      if (pricingConfig?.maxPriceCaps?.length) {
+        const cap = pricingConfig.maxPriceCaps.find((c) => c.size === size);
+        if (cap && unitPrice > cap.max) unitPrice = cap.max;
+      }
+
+      const subtotal = +(unitPrice * quantity).toFixed(2);
+      cylinderSubtotal = +(cylinderSubtotal + subtotal).toFixed(2);
+      cylinderLineItems.push({ size, quantity, unitPrice, subtotal });
     }
 
-    // Enforce max price cap
-    if (pricingConfig?.maxPriceCaps?.length) {
-      const cap = pricingConfig.maxPriceCaps.find((c) => c.size === cylinderSize);
-      if (cap && cylinderPrice > cap.max) cylinderPrice = cap.max;
-    }
+    // ── Delivery fee scaled by total cylinder count ──────────────────────────
+    const baseFee = +(pricingConfig?.deliveryFeeFlat ?? 5).toFixed(2);
+    const totalQty = [...sizeMap.values()].reduce((a, b) => a + b, 0);
+    const feeMultiplier = totalQty === 1 ? 1 : totalQty === 2 ? 1.5 : 2.0;
+    const deliveryFee = +(baseFee * feeMultiplier).toFixed(2);
 
-    const deliveryFee = +(pricingConfig?.deliveryFeeFlat ?? 5).toFixed(2);
-    const totalAmount = +(cylinderPrice + deliveryFee).toFixed(2);
+    const totalAmount = +(cylinderSubtotal + deliveryFee).toFixed(2);
     const commissionPct = station.commissionPct;
     const commissionAmount = +((totalAmount * commissionPct) / 100).toFixed(2);
     const stationPayout = +(totalAmount - commissionAmount).toFixed(2);
-
-    const surgeApplied = surgeMultiplier > 1;
-    const surgeReason  = surgeApplied ? (pricingConfig?.surgeReason ?? 'High demand') : undefined;
 
     // ── Loyalty redemption ───────────────────────────────────────────────
     let loyaltyDiscount = 0;
@@ -160,10 +186,8 @@ router.post(
       const user = await User.findById(userId).select('loyaltyPoints');
       const available = user?.loyaltyPoints ?? 0;
       const toRedeem = Math.min(redeemPoints, available);
-
       if (toRedeem >= LOYALTY_MIN_REDEEM) {
         loyaltyDiscount = +(toRedeem / LOYALTY_REDEEM_RATE).toFixed(2);
-        // Discount cannot exceed totalAmount
         loyaltyDiscount = Math.min(loyaltyDiscount, totalAmount);
         loyaltyPointsRedeemed = Math.round(loyaltyDiscount * LOYALTY_REDEEM_RATE);
       }
@@ -176,9 +200,9 @@ router.post(
     const order = await Order.create({
       userId,
       stationId: station._id,
-      cylinderSize,
+      cylinders: cylinderLineItems,
       orderType,
-      cylinderPrice,
+      cylinderSubtotal,
       deliveryFee,
       totalAmount,
       commissionPct,
@@ -204,9 +228,12 @@ router.post(
       }],
     });
 
-    // Decrement stock — keep isPaused state, recompute isAvailable
-    listing.stockCount -= 1;
-    listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
+    // Decrement stock for each line item
+    for (const [size, quantity] of sizeMap) {
+      const listing = station.cylinderListings.find((l) => l.size === size)!;
+      listing.stockCount -= quantity;
+      listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
+    }
     await station.save();
 
     // Deduct redeemed points from user balance
@@ -257,10 +284,12 @@ router.post(
       order: {
         id: order._id,
         status: order.status,
+        cylinders: cylinderLineItems,
+        cylinderSubtotal,
         totalAmount,
         finalAmount,
         deliveryFee,
-        cylinderPrice,
+        totalCylinders: totalQty,
         surgeApplied,
         surgeMultiplier: surgeApplied ? surgeMultiplier : undefined,
         surgeReason,
@@ -454,15 +483,17 @@ router.patch(
       order.cancellationReason = note;
       order.cancelledBy = role as 'user' | 'station' | 'admin';
 
-      // Restore stock — respect isPaused state
+      // Restore stock for each line item — respect isPaused state
       const station = await Station.findById(order.stationId);
       if (station) {
-        const listing = station.cylinderListings.find((l) => l.size === order.cylinderSize);
-        if (listing) {
-          listing.stockCount += 1;
-          listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
-          await station.save();
+        for (const item of order.cylinders) {
+          const listing = station.cylinderListings.find((l) => l.size === item.size);
+          if (listing) {
+            listing.stockCount += item.quantity;
+            listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
+          }
         }
+        await station.save();
       }
 
       // Free rider

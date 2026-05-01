@@ -516,11 +516,18 @@ router.patch(
       note: req.body.reason,
     });
 
-    // Restore stock
-    await Station.updateOne(
-      { _id: order.stationId, 'cylinderListings.size': order.cylinderSize },
-      { $inc: { 'cylinderListings.$.stockCount': 1 }, $set: { 'cylinderListings.$.isAvailable': true } }
-    );
+    // Restore stock for each line item
+    const stationDoc = await Station.findById(order.stationId);
+    if (stationDoc) {
+      for (const item of order.cylinders) {
+        const listing = stationDoc.cylinderListings.find((l) => l.size === item.size);
+        if (listing) {
+          listing.stockCount += item.quantity;
+          listing.isAvailable = listing.stockCount > 0 && !listing.isPaused;
+        }
+      }
+      await stationDoc.save();
+    }
 
     // Free rider
     if (order.riderId) {

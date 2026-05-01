@@ -162,7 +162,7 @@ router.get('/:id/reviews', async (req: Request, res: Response) => {
   const [reviews, total] = await Promise.all([
     Order.find(
       { stationId, stationRating: { $exists: true } },
-      'stationRating stationRatingComment stationRatedAt userId cylinderSize orderType'
+      'stationRating stationRatingComment stationRatedAt userId cylinders orderType'
     )
       .sort({ stationRatedAt: -1 })
       .skip(skip)
@@ -634,10 +634,11 @@ router.get('/:id/analytics', async (req: AuthRequest, res: Response) => {
       { $group: { _id: '$orderType', count: { $sum: 1 }, revenue: { $sum: '$stationPayout' } } },
     ]),
 
-    // Cylinder size breakdown
+    // Cylinder size breakdown (unwind line items)
     Order.aggregate([
       { $match: matchDelivered },
-      { $group: { _id: '$cylinderSize', count: { $sum: 1 }, revenue: { $sum: '$stationPayout' } } },
+      { $unwind: '$cylinders' },
+      { $group: { _id: '$cylinders.size', count: { $sum: '$cylinders.quantity' }, revenue: { $sum: '$cylinders.subtotal' } } },
       { $sort: { count: -1 } },
     ]),
 

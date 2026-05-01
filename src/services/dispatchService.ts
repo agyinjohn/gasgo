@@ -57,10 +57,9 @@ export async function dispatchOrder(orderId: string): Promise<void> {
   // Notify rider via socket + push
   const orderSummary = {
     orderId: order._id.toString(),
-    cylinderSize: order.cylinderSize,
+    cylinders: order.cylinders,
     orderType: order.orderType,
     deliveryAddress: order.deliveryAddress,
-    stationName: station.name,
     earning: +(order.stationPayout * 0.15).toFixed(2),
     timeoutSeconds: CONSTANTS.ORDER_ACCEPT_TIMEOUT_MS / 1000,
   };
@@ -68,9 +67,10 @@ export async function dispatchOrder(orderId: string): Promise<void> {
   emitOrderToRider(rider._id.toString(), orderSummary);
 
   if (rider.fcmToken) {
+    const sizes = order.cylinders.map((c) => `${c.quantity}×${c.size}kg`).join(', ');
     await sendPushNotification(rider.fcmToken, {
       title: 'New Delivery Order',
-      body: `${order.cylinderSize}kg ${order.orderType} — GH₵${orderSummary.earning}. Tap to accept.`,
+      body: `${sizes} — ${order.orderType}. GH₵${orderSummary.earning}. Tap to accept.`,
       data: { orderId: order._id.toString(), screen: 'OrderAccept' },
     });
   }
@@ -78,7 +78,7 @@ export async function dispatchOrder(orderId: string): Promise<void> {
   // Notify station of incoming order
   emitOrderToStation(station._id.toString(), {
     orderId: order._id.toString(),
-    cylinderSize: order.cylinderSize,
+    cylinders: order.cylinders,
     orderType: order.orderType,
     deliveryAddress: order.deliveryAddress,
     riderName: rider.name,

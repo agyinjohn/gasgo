@@ -31,6 +31,7 @@ export interface IRider extends Document {
     provider: string;
     accountNumber: string;
     accountName: string;
+    recipientCode?: string;
   };
   isActive: boolean;
   createdAt: Date;

@@ -64,7 +64,17 @@ const options: swaggerJsdoc.Options = {
           required: ['stationId', 'cylinderSize', 'orderType', 'deliveryAddress', 'paymentMethod'],
           properties: {
             stationId:       { type: 'string' },
-            cylinderSize:    { type: 'integer', enum: [3, 6, 12] },
+            cylinders: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['size', 'quantity'],
+                properties: {
+                  size:     { type: 'integer', enum: [3, 6, 12] },
+                  quantity: { type: 'integer', minimum: 1, maximum: 20 },
+                },
+              },
+            },
             orderType:       { type: 'string', enum: ['delivery', 'exchange'] },
             deliveryAddress: {
               type: 'object',
@@ -85,20 +95,32 @@ const options: swaggerJsdoc.Options = {
         Order: {
           type: 'object',
           properties: {
-            _id:           { type: 'string' },
-            userId:        { type: 'string' },
-            stationId:     { type: 'string' },
-            riderId:       { type: 'string' },
-            cylinderSize:  { type: 'integer', enum: [3, 6, 12] },
-            orderType:     { type: 'string', enum: ['delivery', 'exchange'] },
-            status:        { type: 'string', enum: ['scheduled', 'pending', 'accepted', 'at_station', 'en_route', 'delivered', 'cancelled'] },
-            totalAmount:   { type: 'number' },
-            deliveryFee:   { type: 'number' },
-            paymentMethod: { type: 'string' },
-            paymentStatus: { type: 'string', enum: ['pending', 'captured', 'released', 'refunded'] },
-            isScheduled:   { type: 'boolean' },
-            scheduledFor:  { type: 'string', format: 'date-time' },
-            createdAt:     { type: 'string', format: 'date-time' },
+            _id:              { type: 'string' },
+            userId:           { type: 'string' },
+            stationId:        { type: 'string' },
+            riderId:          { type: 'string' },
+            cylinders: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  size:      { type: 'integer' },
+                  quantity:  { type: 'integer' },
+                  unitPrice: { type: 'number' },
+                  subtotal:  { type: 'number' },
+                },
+              },
+            },
+            orderType:        { type: 'string', enum: ['delivery', 'exchange'] },
+            status:           { type: 'string', enum: ['scheduled', 'pending', 'accepted', 'at_station', 'en_route', 'delivered', 'cancelled'] },
+            cylinderSubtotal: { type: 'number' },
+            deliveryFee:      { type: 'number' },
+            totalAmount:      { type: 'number' },
+            paymentMethod:    { type: 'string' },
+            paymentStatus:    { type: 'string', enum: ['pending', 'captured', 'released', 'refunded'] },
+            isScheduled:      { type: 'boolean' },
+            scheduledFor:     { type: 'string', format: 'date-time' },
+            createdAt:        { type: 'string', format: 'date-time' },
           },
         },
 
