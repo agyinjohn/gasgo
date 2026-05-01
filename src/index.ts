@@ -29,6 +29,7 @@ dotenv.config();
 
 const app = express();
 const httpServer = http.createServer(app);
+const API = '/api/v1';
 
 // Socket.IO setup
 const io = new SocketServer(httpServer, {
@@ -38,16 +39,13 @@ const io = new SocketServer(httpServer, {
   },
 });
 
-// Attach io to app for use in route handlers
 app.set('io', io);
-
-// Initialise real-time service
 initSocketIO(io);
 
-// ─── Webhook (raw body — must be before express.json()) ─────────────────────
+// ─── Webhook (raw body — must be before express.json()) ──────────────────────
 app.use(`${API}/payments`, paymentRoutes);
 
-// ─── Middleware ────────────────────────────────────────────────────────────────
+// ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -58,29 +56,28 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(rateLimiter);
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-const API = '/api/v1';
-app.use(`${API}/auth`, authRoutes);
-app.use(`${API}/users`, userRoutes);
-app.use(`${API}/stations`, stationRoutes);
-app.use(`${API}/riders`, riderRoutes);
-app.use(`${API}/orders`, orderRoutes);
-app.use(`${API}/admin`, adminRoutes);
+// ─── Routes ──────────────────────────────────────────────────────────────────
+app.use(`${API}/auth`,          authRoutes);
+app.use(`${API}/users`,         userRoutes);
+app.use(`${API}/stations`,      stationRoutes);
+app.use(`${API}/riders`,        riderRoutes);
+app.use(`${API}/orders`,        orderRoutes);
+app.use(`${API}/admin`,         adminRoutes);
 app.use(`${API}/notifications`, notificationRoutes);
 
-// Health check
+// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Swagger docs — disable in production if needed
+// ─── Swagger docs (dev only) ──────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customSiteTitle: 'GasGo API Docs',
     customCss: '.swagger-ui .topbar { background-color: #f97316; }',
   }));
   app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
-  console.log('📖 Swagger docs available at http://localhost:4000/api/docs');
+  console.log('📖 Swagger docs → http://localhost:4000/api/docs');
 }
 
 // ─── Error Handler ────────────────────────────────────────────────────────────

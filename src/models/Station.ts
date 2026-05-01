@@ -139,7 +139,6 @@ const StationSchema = new Schema<IStation>(
 
 // 2dsphere index for geospatial queries
 StationSchema.index({ lat: 1, lng: 1 });
-StationSchema.index({ geohash: 1 });
 StationSchema.index({ status: 1 });
 StationSchema.index({ city: 1, status: 1 });
 

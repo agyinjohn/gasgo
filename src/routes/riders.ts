@@ -17,14 +17,47 @@ function ve(req: Request, res: Response): boolean {
   return false;
 }
 
-/** GET /api/v1/riders/me — rider profile */
+/**
+ * @swagger
+ * /api/v1/riders/me:
+ *   get:
+ *     tags: [Riders]
+ *     summary: Get rider profile
+ *     responses:
+ *       200:
+ *         description: Rider profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Rider'
+ */
 router.get('/me', async (req: AuthRequest, res: Response) => {
   const rider = await Rider.findById(req.user!.id).select('-passwordHash');
   if (!rider) return res.status(404).json({ success: false, message: 'Rider not found' });
   res.json({ success: true, rider });
 });
 
-/** PATCH /api/v1/riders/status — go online/offline */
+/**
+ * @swagger
+ * /api/v1/riders/status:
+ *   patch:
+ *     tags: [Riders]
+ *     summary: Set rider online/offline/on_break status
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [offline, available, on_break] }
+ *     responses:
+ *       200:
+ *         description: Updated status
+ *       403:
+ *         description: KYC not approved
+ */
 router.patch(
   '/status',
   [body('status').isIn(['offline', 'available', 'on_break'])],
@@ -43,7 +76,26 @@ router.patch(
   }
 );
 
-/** PATCH /api/v1/riders/location — update GPS + broadcast to active order room */
+/**
+ * @swagger
+ * /api/v1/riders/location:
+ *   patch:
+ *     tags: [Riders]
+ *     summary: Update rider GPS location (broadcasts to active order room)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [lat, lng]
+ *             properties:
+ *               lat: { type: number }
+ *               lng: { type: number }
+ *     responses:
+ *       200:
+ *         description: Location updated
+ */
 router.patch(
   '/location',
   [body('lat').isFloat({ min: -90, max: 90 }), body('lng').isFloat({ min: -180, max: 180 })],

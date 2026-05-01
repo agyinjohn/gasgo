@@ -82,9 +82,7 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true }
 );
 
-UserSchema.index({ phone: 1 });
 UserSchema.index({ email: 1 }, { sparse: true });
-UserSchema.index({ referralCode: 1 }, { sparse: true });
 
 UserSchema.methods.comparePassword = async function (plain: string): Promise<boolean> {
   if (!this.passwordHash) return false;

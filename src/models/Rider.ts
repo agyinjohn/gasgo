@@ -86,7 +86,6 @@ const RiderSchema = new Schema<IRider>(
   { timestamps: true }
 );
 
-RiderSchema.index({ phone: 1 });
 RiderSchema.index({ status: 1 });
 RiderSchema.index({ kycStatus: 1 });
 RiderSchema.index({ 'location.lat': 1, 'location.lng': 1 });
