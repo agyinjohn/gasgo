@@ -126,13 +126,40 @@ router.patch(
   }
 );
 
-/** PATCH /api/v1/riders/fcm-token */
+/**
+ * @swagger
+ * /api/v1/riders/fcm-token:
+ *   patch:
+ *     tags: [Riders]
+ *     summary: Update rider FCM push notification token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token: { type: string }
+ *     responses:
+ *       200:
+ *         description: Token updated
+ */
 router.patch('/fcm-token', [body('token').notEmpty()], async (req: AuthRequest, res: Response) => {
   await Rider.findByIdAndUpdate(req.user!.id, { fcmToken: req.body.token });
   res.json({ success: true });
 });
 
-/** GET /api/v1/riders/dashboard — earnings + stats */
+/**
+ * @swagger
+ * /api/v1/riders/dashboard:
+ *   get:
+ *     tags: [Riders]
+ *     summary: Get rider dashboard — today earnings, stats, active order
+ *     responses:
+ *       200:
+ *         description: Dashboard data
+ */
 router.get('/dashboard', async (req: AuthRequest, res: Response) => {
   const riderId = new mongoose.Types.ObjectId(req.user!.id);
   const rider = await Rider.findById(riderId).select('totalTrips ratingAvg totalEarnings status');
@@ -164,7 +191,23 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
   });
 });
 
-/** GET /api/v1/riders/orders — delivery history */
+/**
+ * @swagger
+ * /api/v1/riders/orders:
+ *   get:
+ *     tags: [Riders]
+ *     summary: Get rider delivery history
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated delivery history
+ */
 router.get('/orders', async (req: AuthRequest, res: Response) => {
   const riderId = req.user!.id;
   const page  = parseInt(req.query.page  as string || '1');
@@ -184,7 +227,20 @@ router.get('/orders', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, orders, pagination: { page, limit, total } });
 });
 
-/** GET /api/v1/riders/payouts — payout history */
+/**
+ * @swagger
+ * /api/v1/riders/payouts:
+ *   get:
+ *     tags: [Riders]
+ *     summary: Get rider payout history
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *     responses:
+ *       200:
+ *         description: Paginated payout history
+ */
 router.get('/payouts', async (req: AuthRequest, res: Response) => {
   const page  = parseInt(req.query.page  as string || '1');
   const limit = parseInt(req.query.limit as string || '20');
@@ -202,7 +258,27 @@ router.get('/payouts', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, payouts, pagination: { page, limit, total } });
 });
 
-/** PATCH /api/v1/riders/bank-account — save bank/mobile money details */
+/**
+ * @swagger
+ * /api/v1/riders/bank-account:
+ *   patch:
+ *     tags: [Riders]
+ *     summary: Save bank/mobile money account for payouts
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [provider, accountNumber, accountName]
+ *             properties:
+ *               provider:      { type: string, example: mtn }
+ *               accountNumber: { type: string, example: '0244123456' }
+ *               accountName:   { type: string, example: Kwame Mensah }
+ *     responses:
+ *       200:
+ *         description: Bank account saved
+ */
 router.patch(
   '/bank-account',
   [

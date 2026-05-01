@@ -6,9 +6,24 @@ import { verifyPayment, initiateRefund } from '../services/paymentService';
 
 const router = Router();
 
-/** POST /api/v1/payments/webhook — Paystack webhook
- *  NOTE: must be registered BEFORE express.json() in index.ts
- *  so req.body is the raw buffer for signature verification.
+/**
+ * @swagger
+ * /api/v1/payments/webhook:
+ *   post:
+ *     tags: [Payments]
+ *     summary: Paystack webhook (charge.success, transfer.success, transfer.failed)
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Webhook processed
+ *       400:
+ *         description: Invalid signature
  */
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
   const rawBody = req.body instanceof Buffer ? req.body : Buffer.from(JSON.stringify(req.body));
@@ -49,7 +64,21 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req: R
   res.json({ status: 'ok' });
 });
 
-/** GET /api/v1/payments/verify/:reference */
+/**
+ * @swagger
+ * /api/v1/payments/verify/{reference}:
+ *   get:
+ *     tags: [Payments]
+ *     summary: Verify a Paystack payment by reference
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Payment verification result
+ */
 router.get('/verify/:reference', async (req: Request, res: Response) => {
   const result = await verifyPayment(req.params.reference);
   res.json({ success: true, payment: result });

@@ -24,6 +24,16 @@ function ve(req: any, res: Response): boolean {
 
 // ─── Platform Metrics ─────────────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/v1/admin/metrics:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get platform-wide metrics
+ *     responses:
+ *       200:
+ *         description: Orders, stations, riders, financials, users stats
+ */
 router.get('/metrics', async (_req: AuthRequest, res: Response) => {
   const now = new Date();
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
@@ -71,7 +81,26 @@ router.get('/metrics', async (_req: AuthRequest, res: Response) => {
 
 // ─── Station Management ───────────────────────────────────────────────────────
 
-/** GET /api/v1/admin/stations?status=&page=&limit= */
+/**
+ * @swagger
+ * /api/v1/admin/stations:
+ *   get:
+ *     tags: [Admin]
+ *     summary: List all stations with optional status filter
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, active, suspended, banned] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated stations
+ */
 router.get('/stations', async (req: AuthRequest, res: Response) => {
   const { status, page = '1', limit = '20' } = req.query as Record<string, string>;
   const filter = status ? { status } : {};
@@ -85,7 +114,30 @@ router.get('/stations', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, stations, pagination: { page: parseInt(page), total } });
 });
 
-/** PATCH /api/v1/admin/stations/:id/status */
+/**
+ * @swagger
+ * /api/v1/admin/stations/{id}/status:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Approve, suspend or ban a station
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [active, suspended, banned] }
+ *     responses:
+ *       200:
+ *         description: Updated station
+ */
 router.patch(
   '/stations/:id/status',
   [body('status').isIn(['active', 'suspended', 'banned'])],
@@ -101,7 +153,30 @@ router.patch(
   }
 );
 
-/** PATCH /api/v1/admin/stations/:id/commission */
+/**
+ * @swagger
+ * /api/v1/admin/stations/{id}/commission:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Set platform commission % for a station
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [commissionPct]
+ *             properties:
+ *               commissionPct: { type: number, minimum: 0, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: Updated station
+ */
 router.patch(
   '/stations/:id/commission',
   [body('commissionPct').isFloat({ min: 0, max: 100 })],
@@ -117,7 +192,31 @@ router.patch(
   }
 );
 
-/** PATCH /api/v1/admin/stations/:id/location — override geolocation */
+/**
+ * @swagger
+ * /api/v1/admin/stations/{id}/location:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Override station geolocation
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [lat, lng]
+ *             properties:
+ *               lat: { type: number }
+ *               lng: { type: number }
+ *     responses:
+ *       200:
+ *         description: Updated station
+ */
 router.patch(
   '/stations/:id/location',
   [
@@ -140,7 +239,23 @@ router.patch(
 
 // ─── Rider Management ─────────────────────────────────────────────────────────
 
-/** GET /api/v1/admin/riders?kycStatus=&page=&limit= */
+/**
+ * @swagger
+ * /api/v1/admin/riders:
+ *   get:
+ *     tags: [Admin]
+ *     summary: List riders with optional KYC status filter
+ *     parameters:
+ *       - in: query
+ *         name: kycStatus
+ *         schema: { type: string, enum: [pending, approved, rejected] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *     responses:
+ *       200:
+ *         description: Paginated riders
+ */
 router.get('/riders', async (req: AuthRequest, res: Response) => {
   const { kycStatus, page = '1', limit = '20' } = req.query as Record<string, string>;
   const filter = kycStatus ? { kycStatus } : {};
@@ -154,7 +269,31 @@ router.get('/riders', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, riders, pagination: { page: parseInt(page), total } });
 });
 
-/** PATCH /api/v1/admin/riders/:id/kyc */
+/**
+ * @swagger
+ * /api/v1/admin/riders/{id}/kyc:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Approve or reject rider KYC (notifies rider via SMS + push)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [kycStatus]
+ *             properties:
+ *               kycStatus: { type: string, enum: [approved, rejected] }
+ *               reason:    { type: string }
+ *     responses:
+ *       200:
+ *         description: Updated rider
+ */
 router.patch(
   '/riders/:id/kyc',
   [
@@ -192,7 +331,30 @@ router.patch(
   }
 );
 
-/** PATCH /api/v1/admin/riders/:id/status — suspend or ban */
+/**
+ * @swagger
+ * /api/v1/admin/riders/{id}/status:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Suspend or ban a rider (forces offline)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [active, suspended, banned] }
+ *     responses:
+ *       200:
+ *         description: Updated rider
+ */
 router.patch(
   '/riders/:id/status',
   [param('id').isMongoId(), body('status').isIn(['active', 'suspended', 'banned'])],
@@ -211,7 +373,23 @@ router.patch(
 
 // ─── Order Management / Disputes ─────────────────────────────────────────────
 
-/** GET /api/v1/admin/orders?status=&page=&limit= */
+/**
+ * @swagger
+ * /api/v1/admin/orders:
+ *   get:
+ *     tags: [Admin]
+ *     summary: List all orders (dispute management)
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, accepted, at_station, en_route, delivered, cancelled] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *     responses:
+ *       200:
+ *         description: Paginated orders
+ */
 router.get(
   '/orders',
   [
@@ -240,7 +418,23 @@ router.get(
   }
 );
 
-/** POST /api/v1/admin/orders/:id/refund — manually trigger refund */
+/**
+ * @swagger
+ * /api/v1/admin/orders/{id}/refund:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Manually trigger a Paystack refund for an order
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Refund initiated
+ *       400:
+ *         description: Already refunded, cash order, or no reference
+ */
 router.post(
   '/orders/:id/refund',
   [param('id').isMongoId()],
@@ -275,7 +469,30 @@ router.post(
   }
 );
 
-/** PATCH /api/v1/admin/orders/:id/cancel — force cancel any order */
+/**
+ * @swagger
+ * /api/v1/admin/orders/{id}/cancel:
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Force cancel any non-terminal order
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order cancelled
+ */
 router.patch(
   '/orders/:id/cancel',
   [param('id').isMongoId(), body('reason').trim().notEmpty()],
@@ -325,7 +542,35 @@ router.patch(
 
 // ─── Pricing Controls ─────────────────────────────────────────────────────────
 
-/** GET /api/v1/admin/pricing */
+/**
+ * @swagger
+ * /api/v1/admin/pricing:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get current platform pricing config
+ *     responses:
+ *       200:
+ *         description: Pricing config
+ *   patch:
+ *     tags: [Admin]
+ *     summary: Update platform pricing (surge, delivery fee, caps, freeze)
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deliveryFeeFlat:   { type: number }
+ *               surgeMultiplier:   { type: number, minimum: 1, maximum: 5 }
+ *               surgeActive:       { type: boolean }
+ *               surgeReason:       { type: string }
+ *               priceFreezeActive: { type: boolean }
+ *               minPriceCaps:      { type: array }
+ *               maxPriceCaps:      { type: array }
+ *     responses:
+ *       200:
+ *         description: Updated pricing config
+ */
 router.get('/pricing', async (_req: AuthRequest, res: Response) => {
   const config = await PricingConfig.findOne().sort({ createdAt: -1 });
   res.json({ success: true, pricing: config || {} });
@@ -359,7 +604,24 @@ router.patch(
 
 // ─── User Management ──────────────────────────────────────────────────────────
 
-/** GET /api/v1/admin/users?page=&limit= */
+/**
+ * @swagger
+ * /api/v1/admin/users:
+ *   get:
+ *     tags: [Admin]
+ *     summary: List users with optional search
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Search by name or phone
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *     responses:
+ *       200:
+ *         description: Paginated users
+ */
 router.get('/users', async (req: AuthRequest, res: Response) => {
   const { page = '1', limit = '20', search } = req.query as Record<string, string>;
   const skip = (parseInt(page) - 1) * parseInt(limit);

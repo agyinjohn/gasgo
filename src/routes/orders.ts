@@ -303,7 +303,29 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   res.json({ success: true, orders, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
-/** GET /api/v1/orders/:id — single order */
+/**
+ * @swagger
+ * /api/v1/orders/{id}:
+ *   get:
+ *     tags: [Orders]
+ *     summary: Get a single order by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order detail
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Order'
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
+ */
 router.get('/:id', [param('id').isMongoId()], async (req: AuthRequest, res: Response) => {
   if (ve(req, res)) return;
 
@@ -331,8 +353,31 @@ router.get('/:id', [param('id').isMongoId()], async (req: AuthRequest, res: Resp
 // ─── Status Transitions ───────────────────────────────────────────────────────
 
 /**
- * PATCH /api/v1/orders/:id/status
- * Rider updates status: accepted → at_station → en_route
+ * @swagger
+ * /api/v1/orders/{id}/status:
+ *   patch:
+ *     tags: [Orders]
+ *     summary: Update order status (rider/station/user role-gated)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [accepted, at_station, en_route, cancelled] }
+ *               note:   { type: string }
+ *     responses:
+ *       200:
+ *         description: Updated status
+ *       403:
+ *         description: Forbidden
  */
 router.patch(
   '/:id/status',
@@ -461,6 +506,23 @@ router.patch(
 // ─── Rider Decline Order ─────────────────────────────────────────────────────
 
 /**
+ * @swagger
+ * /api/v1/orders/{id}/decline:
+ *   post:
+ *     tags: [Orders]
+ *     summary: Rider declines a dispatched order (triggers next rider dispatch)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order declined
+ *       403:
+ *         description: Only riders can decline
+ */
+/**
  * POST /api/v1/orders/:id/decline
  * Rider explicitly declines a dispatched order.
  */
@@ -487,6 +549,32 @@ router.post(
 
 // ─── OTP Delivery Confirmation ────────────────────────────────────────────────
 
+/**
+ * @swagger
+ * /api/v1/orders/{id}/confirm-delivery:
+ *   post:
+ *     tags: [Orders]
+ *     summary: User confirms delivery with 4-digit OTP
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [otp]
+ *             properties:
+ *               otp: { type: string, minLength: 4, maxLength: 4 }
+ *     responses:
+ *       200:
+ *         description: Delivery confirmed, payouts triggered
+ *       400:
+ *         description: Invalid OTP or max attempts reached
+ */
 /**
  * POST /api/v1/orders/:id/confirm-delivery
  * User submits OTP to confirm receipt.
@@ -616,6 +704,31 @@ router.post(
 // ─── Rate Rider ───────────────────────────────────────────────────────────────
 
 /**
+ * @swagger
+ * /api/v1/orders/{id}/rate:
+ *   post:
+ *     tags: [Orders]
+ *     summary: Rate the rider after delivery
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [rating]
+ *             properties:
+ *               rating:  { type: integer, minimum: 1, maximum: 5 }
+ *               comment: { type: string }
+ *     responses:
+ *       200:
+ *         description: Rating submitted
+ */
+/**
  * POST /api/v1/orders/:id/rate
  */
 router.post(
@@ -656,6 +769,31 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/v1/orders/{id}/rate-station:
+ *   post:
+ *     tags: [Orders]
+ *     summary: Rate the station after delivery
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [rating]
+ *             properties:
+ *               rating:  { type: integer, minimum: 1, maximum: 5 }
+ *               comment: { type: string }
+ *     responses:
+ *       200:
+ *         description: Station rated
+ */
 // ─── Rate Station ─────────────────────────────────────────────────────
 
 /**
